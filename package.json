@@ -1,0 +1,30 @@
+{
+  "name": "infomaniak-mcp-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Remote MCP bridge: Infomaniak mail + calendar tools over Streamable HTTP with OAuth for claude.ai",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx --disable-warning=ExperimentalWarning watch src/main.ts",
+    "start": "node --disable-warning=ExperimentalWarning dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check:upstream": "tsx --disable-warning=ExperimentalWarning scripts/check-upstream.ts"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "@infomaniak/mcp-server-calendar": "^1.3.0",
+    "@infomaniak/mcp-server-mail": "^2.0.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "express": "^5.2.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.20.4",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.env
+.token.json
+__pycache__/
+data/
