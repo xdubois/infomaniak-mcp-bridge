@@ -48,7 +48,7 @@ ${opts.error ? `<p class="err">${esc(opts.error)}</p>` : ""}
 <ol>
 <li>Open <a href="${MANAGER_TOKENS_URL}" target="_blank" rel="noopener">Manager &rsaquo; API tokens</a> and create a token.</li>
 <li>Give it exactly these scopes: ${scopeList}.</li>
-<li>Pick a validity you're comfortable with, then paste the token below. It is stored encrypted and only ever sent to <code>api.infomaniak.com</code>.</li>
+<li>Pick a validity you're comfortable with, then paste the token below. It is stored encrypted and only ever sent to Infomaniak's own APIs.</li>
 </ol>
 <form method="post" action="/auth/enrol" autocomplete="off">
 <input type="hidden" name="p" value="${esc(opts.pendingId)}">
@@ -70,6 +70,6 @@ export function landingPage(opts: {mcpUrl: string; services: Service[]}): string
 <li>In claude.ai, open <em>Settings &rsaquo; Connectors &rsaquo; Add custom connector</em> and paste the endpoint URL above. Leave the OAuth client fields empty: the bridge supports dynamic registration.</li>
 <li>Click <em>Connect</em>: you'll sign in with your Infomaniak account, then paste an Infomaniak API token once.</li>
 </ol>
-<p class="muted">Your API token is stored encrypted and is only sent to api.infomaniak.com.</p>`,
+<p class="muted">Your API token is stored encrypted and is only sent to Infomaniak's own APIs.</p>`,
     );
 }

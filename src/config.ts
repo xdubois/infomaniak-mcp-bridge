@@ -2,13 +2,24 @@ import {z} from "zod";
 
 const csv = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
 const bool = z.string().default("false").transform((s) => ["1", "true", "yes"].includes(s.toLowerCase()));
+/** Express "trust proxy": false, a hop count (true = 1), or a comma list of CIDRs / keywords such as `loopback`. */
+const trustProxy = z.string().default("false").transform((s): false | number | string => {
+    const v = s.trim().toLowerCase();
+    if (["", "0", "false", "no"].includes(v)) return false;
+    if (["1", "true", "yes"].includes(v)) return 1;
+    return /^\d+$/.test(v) ? Number(v) : s.trim();
+});
 
 const EnvSchema = z.object({
     /** Externally reachable base URL of this bridge (what claude.ai talks to). */
     PUBLIC_URL: z.url().default("http://localhost:3000"),
     PORT: z.coerce.number().int().positive().default(3000),
-    /** Behind a reverse proxy / ingress, trust X-Forwarded-* (rate limiting, redirects). */
-    TRUST_PROXY: bool,
+    /**
+     * Behind a reverse proxy / ingress: how many proxy hops set X-Forwarded-* (true = 1, e.g. Traefik alone;
+     * 2 when an L7 load balancer in front of it also appends X-Forwarded-For), or CIDRs. Drives the
+     * per-client-IP rate limits on the OAuth endpoints.
+     */
+    TRUST_PROXY: trustProxy,
 
     /** Infomaniak OAuth application (Manager > Cloud Computing > Auth, or account > applications). SSO only. */
     INFOMANIAK_CLIENT_ID: z.string().min(1),
@@ -28,10 +39,12 @@ const EnvSchema = z.object({
 
     /** Idle seconds before a user's upstream server process is stopped; max processes per replica. */
     PROCESS_IDLE_TTL: z.coerce.number().int().positive().default(600),
-    MAX_PROCESSES: z.coerce.number().int().positive().default(100),
+    MAX_PROCESSES: z.coerce.number().int().positive().default(20),
 
     ACCESS_TOKEN_TTL: z.coerce.number().int().positive().default(3600),
     REFRESH_TOKEN_TTL: z.coerce.number().int().positive().default(30 * 24 * 3600),
+    /** Dynamically registered clients expire after this long without issuing tokens (never below REFRESH_TOKEN_TTL). */
+    CLIENT_TTL: z.coerce.number().int().positive().default(90 * 24 * 3600),
 });
 
 export type Config = z.infer<typeof EnvSchema> & {

@@ -46,14 +46,14 @@ without the login.
 |---|---|---|
 | `PUBLIC_URL` | `http://localhost:3000` | Base URL claude.ai reaches; MCP endpoint is `/mcp` |
 | `PORT` | `3000` | |
-| `TRUST_PROXY` | `false` | `true` behind an ingress |
+| `TRUST_PROXY` | `false` | Proxy hops that set `X-Forwarded-*`: `true`/`1` for a single reverse proxy or ingress, `2` if an L7 load balancer in front of it also appends `X-Forwarded-For`, or CIDRs. Drives per-client rate limits |
 | `INFOMANIAK_CLIENT_ID/SECRET` | | The OAuth app (identity only) |
 | `BRIDGE_ENCRYPTION_KEY` | | 32 bytes base64; encrypts stored API tokens |
-| `STORE` | `sqlite` | `sqlite` now; `redis` planned (`src/store/index.ts`) |
-| `SQLITE_PATH` | `./data/bridge.sqlite` | |
+| `STORE` | `sqlite` | `sqlite` (one replica, local file) or `redis` (shared by replicas) |
+| `SQLITE_PATH` / `REDIS_URL` | `./data/bridge.sqlite` / | Location of that store |
 | `ENABLED_SERVICES` | `mail,calendar` | Which products to expose; drives processes, tools and required scopes |
 | `ALLOWED_EMAIL_DOMAINS` | | Optional extra sign-in guard |
-| `PROCESS_IDLE_TTL` / `MAX_PROCESSES` | `600` / `100` | Upstream process pool per replica |
+| `PROCESS_IDLE_TTL` / `MAX_PROCESSES` | `600` / `20` | Upstream process pool per replica (one Node process each; size to memory) |
 | `ACCESS_TOKEN_TTL` / `REFRESH_TOKEN_TTL` | `3600` / 30 days | Bridge tokens (opaque, stored hashed) |
 
 ## Adding a service
@@ -65,13 +65,16 @@ package, enable it with `ENABLED_SERVICES`. Upgrading a service is `npm update`.
 ## Security notes
 
 - API tokens are the user's own, scoped by them in the Manager, revocable there; the
-  bridge only hands them to the official server process, which only talks to
-  `api.infomaniak.com`. Enrolment checks the token's `/2/profile` matches the signed-in
+  bridge only hands them to the official server process, which only talks to Infomaniak's
+  API hosts (`api.infomaniak.com`, `mail.infomaniak.com`). Enrolment checks the token's `/2/profile` matches the signed-in
   Infomaniak account. Child processes get a sanitised environment plus that one token,
   never the bridge's own secrets.
-- Bridge access/refresh tokens are random, stored as sha256, rotated on refresh.
+- Bridge access/refresh tokens are random, stored as sha256, rotated on refresh. A refresh can
+  narrow the granted scopes but not widen them. Dynamically registered clients expire
+  (`CLIENT_TTL`) unless they keep issuing tokens, so open registration can't fill the store.
 - Infomaniak rate-limits per token (60 req/min), so users don't share a budget.
 - Only the tools of enabled services are exposed. **Proxy policy** (`hiddenArgs` in the
   registry) removes arguments that are unsafe on a shared host from the tool schemas and
   rejects calls using them: upstream mail's `attachments` are local file paths read by the
   server process, which here would be the bridge's own disk.
+| `CLIENT_TTL` | 90 days | Registered OAuth clients expire after this long without issuing tokens (never below `REFRESH_TOKEN_TTL`) |

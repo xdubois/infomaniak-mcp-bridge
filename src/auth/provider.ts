@@ -1,6 +1,6 @@
 import type {Response} from "express";
 import type {OAuthRegisteredClientsStore} from "@modelcontextprotocol/sdk/server/auth/clients.js";
-import {InvalidGrantError, InvalidTokenError} from "@modelcontextprotocol/sdk/server/auth/errors.js";
+import {InvalidGrantError, InvalidScopeError, InvalidTokenError} from "@modelcontextprotocol/sdk/server/auth/errors.js";
 import type {AuthorizationParams, OAuthServerProvider} from "@modelcontextprotocol/sdk/server/auth/provider.js";
 import type {AuthInfo} from "@modelcontextprotocol/sdk/server/auth/types.js";
 import type {OAuthClientInformationFull, OAuthTokenRevocationRequest, OAuthTokens} from "@modelcontextprotocol/sdk/shared/auth.js";
@@ -35,10 +35,15 @@ export class BridgeAuthProvider implements OAuthServerProvider {
             // The SDK's registration handler generates client_id (+ secret) before calling us.
             registerClient: async (client) => {
                 const full = client as OAuthClientInformationFull;
-                await this.repo.putClient(full);
+                await this.repo.putClient(full, this.clientTtl);
                 return full;
             },
         };
+    }
+
+    /** Registrations expire unless they keep issuing tokens; never shorter than a refresh token's life. */
+    private get clientTtl(): number {
+        return Math.max(this.cfg.CLIENT_TTL, this.cfg.REFRESH_TOKEN_TTL);
     }
 
     async authorize(client: OAuthClientInformationFull, params: AuthorizationParams, res: Response): Promise<void> {
@@ -112,10 +117,13 @@ export class BridgeAuthProvider implements OAuthServerProvider {
         if (!rec || rec.kind !== "refresh" || rec.clientId !== client.client_id || rec.expiresAt <= nowSec()) {
             throw new InvalidGrantError("Invalid refresh token");
         }
+        // RFC 6749 §6: a refresh may narrow the grant, never widen it; the resource stays the same.
+        if (scopes?.some((s) => !rec.scopes.includes(s))) throw new InvalidScopeError("Requested scope exceeds the original grant");
+        if (resource && rec.resource && resource.href !== rec.resource) throw new InvalidGrantError("resource mismatch");
         // Rotate: the old refresh token and its access token die together.
         await this.repo.delToken(hash);
         if (rec.pairHash) await this.repo.delToken(rec.pairHash);
-        return this.issueTokens(rec.userId, client.client_id, scopes ?? rec.scopes, resource?.href ?? rec.resource);
+        return this.issueTokens(rec.userId, client.client_id, scopes ?? rec.scopes, rec.resource);
     }
 
     async verifyAccessToken(token: string): Promise<AuthInfo> {
@@ -152,6 +160,7 @@ export class BridgeAuthProvider implements OAuthServerProvider {
             {...base, kind: "refresh", expiresAt: now + this.cfg.REFRESH_TOKEN_TTL, pairHash: accessHash},
             this.cfg.REFRESH_TOKEN_TTL,
         );
+        await this.repo.touchClient(clientId, this.clientTtl);
         return {
             access_token: access,
             token_type: "bearer",

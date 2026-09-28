@@ -54,7 +54,12 @@ export class Repo {
     constructor(private readonly store: Store) {}
 
     getClient = (id: string) => this.store.get<OAuthClientInformationFull>(NS.client, id);
-    putClient = (c: OAuthClientInformationFull) => this.store.set(NS.client, c.client_id, c);
+    putClient = (c: OAuthClientInformationFull, ttl: number) => this.store.set(NS.client, c.client_id, c, ttl);
+    /** Re-arms the client's TTL (called whenever it is issued tokens, so active clients never expire). */
+    touchClient = async (id: string, ttl: number) => {
+        const c = await this.getClient(id);
+        if (c) await this.putClient(c, ttl);
+    };
 
     getUser = (id: string) => this.store.get<User>(NS.user, id);
     putUser = (u: User) => this.store.set(NS.user, u.id, u);

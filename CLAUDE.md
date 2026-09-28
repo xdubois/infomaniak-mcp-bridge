@@ -31,8 +31,9 @@ CLIENT_ID=… ./scripts/scope-probe.sh ; python3 scripts/oauth-probe.py   # the 
   `probeUrl`, `hiddenArgs` policy. `services/pool.ts` per-(user, service, token) child
   processes with idle reaping. `mcp.ts` stateless per-request proxy: merges tools/list,
   routes tools/call by prefix, enforces policy.
-- `store/` tiny KV interface (`get/set/del` + TTL): `sqlite.ts` (node:sqlite) now,
-  Redis planned for prod; `repo.ts` typed namespaces (client, user, pending, code, token).
+- `store/` tiny KV interface (`get/set/del` + TTL): `sqlite.ts` (node:sqlite, one replica) and
+  `redis.ts` (`redis` client, shared by replicas); `repo.ts` typed namespaces (client, user,
+  pending, code, token).
 
 ## Decisions and gotchas
 
@@ -50,8 +51,9 @@ CLIENT_ID=… ./scripts/scope-probe.sh ; python3 scripts/oauth-probe.py   # the 
 - HTTP side is stateless (`sessionIdGenerator: undefined`, JSON responses); the process
   pool is a per-replica cache, so replicas + Redis work without sticky sessions.
 - Infomaniak app redirect URIs currently registered: `http://localhost:3000/auth/infomaniak/callback`,
-  `http://localhost:8000/callback` (smoke/probe scripts), claude.ai's callback. A public
-  deployment needs `<PUBLIC_URL>/auth/infomaniak/callback` added too.
+  `http://localhost:8000/callback` (smoke/probe scripts), claude.ai's callback (harmless but
+  unnecessary: MCP clients register their callback with the bridge via DCR, Infomaniak only
+  ever sees the bridge's own). A public deployment needs `<PUBLIC_URL>/auth/infomaniak/callback`.
 
 ## Status (2026-09-28)
 

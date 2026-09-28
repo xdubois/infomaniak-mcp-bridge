@@ -19,6 +19,9 @@ const {version} = require("../package.json") as {version: string};
 async function main(): Promise<void> {
     loadDotEnv();
     const cfg = loadConfig();
+    if (cfg.publicUrl.protocol === "https:" && cfg.TRUST_PROXY === false) {
+        console.warn("[bridge] PUBLIC_URL is https but TRUST_PROXY=false: behind a reverse proxy / ingress every request shares one client IP, so the OAuth rate limits apply to everyone together. Set TRUST_PROXY=true.");
+    }
     const services = resolveServices(cfg.ENABLED_SERVICES);
     const store = await createStore(cfg);
     const repo = new Repo(store);
@@ -29,7 +32,7 @@ async function main(): Promise<void> {
 
     const app = express();
     app.disable("x-powered-by");
-    if (cfg.TRUST_PROXY) app.set("trust proxy", 1);
+    if (cfg.TRUST_PROXY !== false) app.set("trust proxy", cfg.TRUST_PROXY);
     app.use(express.json({limit: "8mb"}));
     app.use(express.urlencoded({extended: false}));
 
