@@ -60,6 +60,16 @@ ${opts.error ? `<p class="err">${esc(opts.error)}</p>` : ""}
     );
 }
 
+export function forgottenPage(opts: {email?: string; hadToken: boolean}): string {
+    const who = opts.email ? ` for <strong>${esc(opts.email)}</strong>` : "";
+    return page(
+        "Infomaniak MCP Bridge",
+        `<h1>${opts.hadToken ? "Token forgotten" : "Nothing to forget"}</h1>
+<p>${opts.hadToken ? `The bridge no longer holds an API token${who}. Connected clients (claude.ai, Claude Code, …) will ask you to reconnect and to paste a token again.` : `The bridge held no API token${who}.`}</p>
+<p>The token itself still exists at Infomaniak until you revoke it there: <a href="${MANAGER_TOKENS_URL}" target="_blank" rel="noopener">Manager &rsaquo; API tokens</a>.</p>`,
+    );
+}
+
 export function landingPage(opts: {mcpUrl: string; services: Service[]}): string {
     return page(
         "Infomaniak MCP Bridge",
@@ -70,6 +80,7 @@ export function landingPage(opts: {mcpUrl: string; services: Service[]}): string
 <li>In claude.ai, open <em>Settings &rsaquo; Connectors &rsaquo; Add custom connector</em> and paste the endpoint URL above. Leave the OAuth client fields empty: the bridge supports dynamic registration.</li>
 <li>Click <em>Connect</em>: you'll sign in with your Infomaniak account, then paste an Infomaniak API token once.</li>
 </ol>
-<p class="muted">Your API token is stored encrypted and is only sent to Infomaniak's own APIs.</p>`,
+<p class="muted">Your API token is stored encrypted and is only sent to Infomaniak's own APIs.
+Want the bridge to forget it? <a href="/auth/forget">Sign in with Infomaniak and delete it</a>; revoke the token itself in the Manager.</p>`,
     );
 }

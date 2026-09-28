@@ -10,21 +10,33 @@ export interface User {
     enrolledAt?: number;
 }
 
-/** An authorization request from an MCP client, parked while the user signs in / enrols. */
-export interface Pending {
+/** An Infomaniak sign-in in progress, keyed by the OIDC `state`. */
+interface PendingBase {
     id: string;
-    clientId: string;
-    redirectUri: string;
-    codeChallenge: string;
-    state?: string;
-    scopes: string[];
-    resource?: string;
     /** PKCE verifier for OUR upstream Infomaniak login. */
     oidcVerifier: string;
     /** Set once Infomaniak sign-in completed. */
     userId?: string;
     createdAt: number;
 }
+
+/** An authorization request from an MCP client, parked while the user signs in / enrols. */
+export interface PendingAuthorize extends PendingBase {
+    action?: undefined;
+    clientId: string;
+    redirectUri: string;
+    codeChallenge: string;
+    state?: string;
+    scopes: string[];
+    resource?: string;
+}
+
+/** A user asking the bridge to forget their API token; the sign-in proves it is them. */
+export interface PendingForget extends PendingBase {
+    action: "forget";
+}
+
+export type Pending = PendingAuthorize | PendingForget;
 
 export interface CodeRecord {
     clientId: string;
@@ -63,6 +75,8 @@ export class Repo {
 
     getUser = (id: string) => this.store.get<User>(NS.user, id);
     putUser = (u: User) => this.store.set(NS.user, u.id, u);
+    /** Forgets the user entirely (API token included); their bridge tokens then fail with 401. */
+    delUser = (id: string) => this.store.del(NS.user, id);
 
     getPending = (id: string) => this.store.get<Pending>(NS.pending, id);
     putPending = (p: Pending, ttl: number) => this.store.set(NS.pending, p.id, p, ttl);

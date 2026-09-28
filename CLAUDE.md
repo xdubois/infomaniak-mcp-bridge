@@ -26,7 +26,8 @@ CLIENT_ID=… ./scripts/scope-probe.sh ; python3 scripts/oauth-probe.py   # the 
   .well-known) + `auth/routes.ts` + `mcp.ts`; `/healthz`; landing page `/`.
 - `auth/provider.ts` the OAuth 2.1 authorization server (opaque tokens stored hashed,
   refresh rotation, `completeAuthorization`). `auth/routes.ts` Infomaniak OIDC callback +
-  one-time API-token enrolment (`/auth/enrol`), `auth/html.ts` the pages.
+  one-time API-token enrolment (`/auth/enrol`) + self-service forget (`/auth/forget`, deletes
+  the user record), `auth/html.ts` the pages.
 - `infomaniak/oidc.ts` identity-only login; `infomaniak/api.ts` `apiGet` (path on
   api.infomaniak.com or full URL) + `fetchProfile`.
 - `services/registry.ts` one entry per product: npm package, token env var, scopes,

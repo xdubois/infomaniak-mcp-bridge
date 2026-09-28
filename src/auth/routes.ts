@@ -1,11 +1,11 @@
 import {Router} from "express";
 import type {Config} from "../config.js";
-import {decrypt, encrypt} from "../crypto.js";
+import {decrypt, encrypt, randomToken, s256Challenge} from "../crypto.js";
 import {errorMessage, fetchProfile, InfomaniakApiError} from "../infomaniak/api.js";
 import type {InfomaniakOidc} from "../infomaniak/oidc.js";
 import {probeService, requiredScopes, type Service} from "../services/registry.js";
-import type {Pending, Repo, User} from "../store/repo.js";
-import {enrolPage, errorPage} from "./html.js";
+import type {PendingAuthorize, PendingForget, Repo, User} from "../store/repo.js";
+import {enrolPage, errorPage, forgottenPage} from "./html.js";
 import {PENDING_TTL, type BridgeAuthProvider} from "./provider.js";
 
 interface Deps {
@@ -19,7 +19,7 @@ interface Deps {
 const EXPIRED_HINT = "Go back to Claude and start the connection again.";
 
 /** OAuth error redirect back to the MCP client, per RFC 6749 §4.1.2.1. */
-function errorRedirect(pending: Pending, error: string, description: string): string {
+function errorRedirect(pending: PendingAuthorize, error: string, description: string): string {
     const url = new URL(pending.redirectUri);
     url.searchParams.set("error", error);
     url.searchParams.set("error_description", description);
@@ -52,7 +52,7 @@ export function authRoutes({cfg, repo, oidc, provider, services}: Deps): Router 
     const r = Router();
     const scopes = requiredScopes(services);
 
-    const render = (res: import("express").Response, pending: Pending, user: User | undefined, extra: {error?: string; notice?: string} = {}) =>
+    const render = (res: import("express").Response, pending: PendingAuthorize, user: User | undefined, extra: {error?: string; notice?: string} = {}) =>
         res.status(extra.error ? 400 : 200).type("html").send(enrolPage({pendingId: pending.id, email: user?.email, services, scopes, ...extra}));
 
     // Back from Infomaniak sign-in.
@@ -65,6 +65,10 @@ export function authRoutes({cfg, repo, oidc, provider, services}: Deps): Router 
         }
         if (q.error || !q.code) {
             await repo.delPending(pending.id);
+            if (pending.action === "forget") {
+                res.status(400).type("html").send(errorPage("The Infomaniak sign-in was cancelled; nothing was changed."));
+                return;
+            }
             res.redirect(302, errorRedirect(pending, "access_denied", q.error_description ?? q.error ?? "Infomaniak sign-in was cancelled"));
             return;
         }
@@ -79,7 +83,22 @@ export function authRoutes({cfg, repo, oidc, provider, services}: Deps): Router 
         }
         if (!emailAllowed(identity.email, cfg.ALLOWED_EMAIL_DOMAINS)) {
             await repo.delPending(pending.id);
+            if (pending.action === "forget") {
+                res.status(403).type("html").send(errorPage("This Infomaniak account is not allowed to use this bridge."));
+                return;
+            }
             res.redirect(302, errorRedirect(pending, "access_denied", "This Infomaniak account is not allowed to use this bridge"));
+            return;
+        }
+
+        if (pending.action === "forget") {
+            // Identity proven: drop the user record (API token included). Outstanding bridge tokens
+            // now fail with 401 at /mcp, so every connected client asks to reconnect.
+            await repo.delPending(pending.id);
+            const forgotten = await repo.getUser(identity.userId);
+            if (forgotten) await repo.delUser(forgotten.id);
+            console.info(`[auth] user ${identity.userId} asked the bridge to forget them (${forgotten?.apiTokenEnc ? "API token deleted" : "nothing was stored"})`);
+            res.type("html").send(forgottenPage({email: identity.email, hadToken: !!forgotten?.apiTokenEnc}));
             return;
         }
 
@@ -106,7 +125,7 @@ export function authRoutes({cfg, repo, oidc, provider, services}: Deps): Router 
     r.get("/auth/enrol", async (req, res) => {
         const q = req.query as Record<string, string | undefined>;
         const pending = q.p ? await repo.getPending(q.p) : undefined;
-        if (!pending?.userId) {
+        if (!pending || pending.action === "forget" || !pending.userId) {
             res.status(400).type("html").send(errorPage("This page has expired.", EXPIRED_HINT));
             return;
         }
@@ -120,7 +139,7 @@ export function authRoutes({cfg, repo, oidc, provider, services}: Deps): Router 
         const body = (req.body ?? {}) as Record<string, string | undefined>;
         const pending = body.p ? await repo.getPending(body.p) : undefined;
         const user = pending?.userId ? await repo.getUser(pending.userId) : undefined;
-        if (!pending || !user) {
+        if (!pending || pending.action === "forget" || !user) {
             res.status(400).type("html").send(errorPage("This page has expired.", EXPIRED_HINT));
             return;
         }
@@ -152,6 +171,14 @@ export function authRoutes({cfg, repo, oidc, provider, services}: Deps): Router 
         await repo.putUser({...user, apiTokenEnc: encrypt(token, cfg.encryptionKey), enrolledAt: Date.now()});
         console.info(`[auth] user ${user.id} enrolled an API token`);
         res.redirect(302, await provider.completeAuthorization(pending, user.id));
+    });
+
+    // Self-service "forget my API token": prove identity through the same Infomaniak sign-in,
+    // then the callback deletes the user record. Revoking the token itself is done in the Manager.
+    r.get("/auth/forget", async (_req, res) => {
+        const pending: PendingForget = {id: randomToken(32), action: "forget", oidcVerifier: randomToken(48), createdAt: Date.now()};
+        await repo.putPending(pending, PENDING_TTL);
+        res.redirect(302, oidc.authorizeUrl({state: pending.id, codeChallenge: s256Challenge(pending.oidcVerifier)}));
     });
 
     return r;

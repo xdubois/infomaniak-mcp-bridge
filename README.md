@@ -104,6 +104,9 @@ package, enable it with `ENABLED_SERVICES`. Upgrading a service is `npm update`.
   API hosts (`api.infomaniak.com`, `mail.infomaniak.com`). Enrolment checks the token's `/2/profile` matches the signed-in
   Infomaniak account. Child processes get a sanitised environment plus that one token,
   never the bridge's own secrets.
+- Users can make the bridge forget them at `<PUBLIC_URL>/auth/forget`: an Infomaniak sign-in
+  proves identity, then the user record and encrypted token are deleted and every connected
+  client gets asked to reconnect. Revoking the token itself is done in the Manager.
 - Bridge access/refresh tokens are random, stored as sha256, rotated on refresh. A refresh can
   narrow the granted scopes but not widen them. Dynamically registered clients expire
   (`CLIENT_TTL`) unless they keep issuing tokens, so open registration can't fill the store.

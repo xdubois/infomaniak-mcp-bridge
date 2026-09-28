@@ -4,3 +4,4 @@ dist/
 .token.json
 __pycache__/
 data/
+deploy-local/

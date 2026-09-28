@@ -7,7 +7,7 @@ import type {OAuthClientInformationFull, OAuthTokenRevocationRequest, OAuthToken
 import type {Config} from "../config.js";
 import {randomToken, s256Challenge, sha256} from "../crypto.js";
 import type {InfomaniakOidc} from "../infomaniak/oidc.js";
-import type {Pending, Repo} from "../store/repo.js";
+import type {PendingAuthorize, Repo} from "../store/repo.js";
 
 export const PENDING_TTL = 10 * 60; // user has 10 min to sign in + enrol
 const CODE_TTL = 5 * 60;
@@ -47,7 +47,7 @@ export class BridgeAuthProvider implements OAuthServerProvider {
     }
 
     async authorize(client: OAuthClientInformationFull, params: AuthorizationParams, res: Response): Promise<void> {
-        const pending: Pending = {
+        const pending: PendingAuthorize = {
             id: randomToken(32),
             clientId: client.client_id,
             redirectUri: params.redirectUri,
@@ -63,7 +63,7 @@ export class BridgeAuthProvider implements OAuthServerProvider {
     }
 
     /** Called by routes once the user is signed in AND has an API token on file. */
-    async completeAuthorization(pending: Pending, userId: string): Promise<string> {
+    async completeAuthorization(pending: PendingAuthorize, userId: string): Promise<string> {
         const code = randomToken(32);
         await this.repo.putCode(
             sha256(code),
