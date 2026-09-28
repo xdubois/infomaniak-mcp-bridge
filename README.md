@@ -49,6 +49,13 @@ and keeps SQLite on the `/data` volume. Budget about 75 MB per upstream process:
 `MAX_PROCESSES=20` fits a 2 GB memory limit. `docker compose up -d --build` runs it locally on
 `127.0.0.1:3000` (with plain `docker run`, add `--init` so the child processes are reaped).
 
+**Published image.** GitHub Actions (`.github/workflows/docker.yml`) typechecks, runs the
+upstream check, then builds a multi-arch image and pushes it to
+`ghcr.io/xdubois/infomaniak-mcp-bridge`: `main` and `sha-<commit>` on every push to `main`,
+`X.Y.Z`, `X.Y` and `latest` on `vX.Y.Z` tags. While the package is private, pulling needs a
+token with `read:packages` (on Kubernetes an `imagePullSecret`, see the comment in
+`deploy/deployment.yml`).
+
 ### Kubernetes
 
 `deploy/deployment.yml` (namespace, ConfigMap, Service, Deployment: stateless on `STORE=redis`,
@@ -57,7 +64,7 @@ route TLS traffic for `PUBLIC_URL` to service `bridge` port 80, and register
 `<PUBLIC_URL>/auth/infomaniak/callback` on the Infomaniak app.
 
 ```sh
-kubectl apply -f deploy/deployment.yml                  # edit image and PUBLIC_URL first
+kubectl apply -f deploy/deployment.yml                  # edit PUBLIC_URL (and the image tag) first
 set -a; . ./.env; set +a                                # or edit the placeholders by hand
 envsubst < deploy/secret.yml | kubectl apply -f -
 BRIDGE_URL=<PUBLIC_URL> python3 scripts/smoke.py
