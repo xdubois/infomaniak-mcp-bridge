@@ -1,0 +1,96 @@
+# Minimal Kubernetes deployment: namespace, config, service, one stateless deployment on Redis.
+# Bring your own Redis and ingress (Traefik IngressRoute, nginx Ingress, ...): route TLS traffic
+# for PUBLIC_URL to service "bridge" port 80, and register <PUBLIC_URL>/auth/infomaniak/callback
+# on the Infomaniak OAuth app. Secrets are in secret.yml.
+#   kubectl apply -f deploy/deployment.yml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: infomaniak-mcp-bridge
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bridge-config
+  namespace: infomaniak-mcp-bridge
+data:
+  PUBLIC_URL: "https://bridge.example.com"   # what claude.ai reaches; the MCP endpoint is <PUBLIC_URL>/mcp
+  STORE: "redis"                             # REDIS_URL lives in the Secret
+  ENABLED_SERVICES: "mail,calendar"
+  TRUST_PROXY: "true"                        # proxy hops setting X-Forwarded-*: true for the ingress alone, "2" with an L7 LB in front of it
+  MAX_PROCESSES: "20"                        # upstream child processes per replica, ~75 MB each
+  #ALLOWED_EMAIL_DOMAINS: "example.com"      # optional extra sign-in guard
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bridge
+  namespace: infomaniak-mcp-bridge
+spec:
+  selector:
+    app: infomaniak-mcp-bridge
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bridge
+  namespace: infomaniak-mcp-bridge
+spec:
+  replicas: 1                                # stateless with STORE=redis: scale freely
+  selector:
+    matchLabels:
+      app: infomaniak-mcp-bridge
+  template:
+    metadata:
+      labels:
+        app: infomaniak-mcp-bridge
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000                      # the image's `node` user
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: bridge
+          image: ghcr.io/example/infomaniak-mcp-bridge:0.1.0   # your build of the Dockerfile
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: bridge-config
+            - secretRef:
+                name: bridge-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 2Gi                    # fits MAX_PROCESSES=20 upstream processes
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

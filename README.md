@@ -40,6 +40,33 @@ Checks: `npm run check:upstream` spawns the official servers and lists their too
 `npx tsx scripts/dev-token.ts <api-token>` mints a bridge token for local curl tests
 without the login.
 
+## Deploy
+
+The image (`Dockerfile`: multi-stage on `node:24-bookworm-slim`, runs as `node`, works with a
+read-only root filesystem and no capabilities) holds the compiled bridge plus the official
+upstream packages; upgrading them is `npm update` and a rebuild. It defaults `TRUST_PROXY=true`
+and keeps SQLite on the `/data` volume. Budget about 75 MB per upstream process: the default
+`MAX_PROCESSES=20` fits a 2 GB memory limit. `docker compose up -d --build` runs it locally on
+`127.0.0.1:3000` (with plain `docker run`, add `--init` so the child processes are reaped).
+
+### Kubernetes
+
+`deploy/deployment.yml` (namespace, ConfigMap, Service, Deployment: stateless on `STORE=redis`,
+scale as you like) and `deploy/secret.yml` (placeholders). Bring your own Redis and ingress:
+route TLS traffic for `PUBLIC_URL` to service `bridge` port 80, and register
+`<PUBLIC_URL>/auth/infomaniak/callback` on the Infomaniak app.
+
+```sh
+kubectl apply -f deploy/deployment.yml                  # edit image and PUBLIC_URL first
+set -a; . ./.env; set +a                                # or edit the placeholders by hand
+envsubst < deploy/secret.yml | kubectl apply -f -
+BRIDGE_URL=<PUBLIC_URL> python3 scripts/smoke.py
+```
+
+`TRUST_PROXY` in the ConfigMap: `true` when the ingress is the only proxy setting
+`X-Forwarded-*`, `2` if an L7 load balancer in front of it also appends `X-Forwarded-For`,
+otherwise the per-client rate limits collapse onto the balancer's address.
+
 ## Configuration
 
 | Variable | Default | Purpose |
@@ -55,6 +82,7 @@ without the login.
 | `ALLOWED_EMAIL_DOMAINS` | | Optional extra sign-in guard |
 | `PROCESS_IDLE_TTL` / `MAX_PROCESSES` | `600` / `20` | Upstream process pool per replica (one Node process each; size to memory) |
 | `ACCESS_TOKEN_TTL` / `REFRESH_TOKEN_TTL` | `3600` / 30 days | Bridge tokens (opaque, stored hashed) |
+| `CLIENT_TTL` | 90 days | Registered OAuth clients expire after this long without issuing tokens (never below `REFRESH_TOKEN_TTL`) |
 
 ## Adding a service
 
@@ -77,4 +105,3 @@ package, enable it with `ENABLED_SERVICES`. Upgrading a service is `npm update`.
   registry) removes arguments that are unsafe on a shared host from the tool schemas and
   rejects calls using them: upstream mail's `attachments` are local file paths read by the
   server process, which here would be the bridge's own disk.
-| `CLIENT_TTL` | 90 days | Registered OAuth clients expire after this long without issuing tokens (never below `REFRESH_TOKEN_TTL`) |

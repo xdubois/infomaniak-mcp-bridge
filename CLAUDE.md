@@ -12,6 +12,7 @@ reasoning behind the design. Read both before changing auth or service code.
 npm run dev              # tsx watch src/main.ts (needs .env; see .env.example)
 npm run build && npm start
 npm run typecheck
+docker compose up -d --build        # local container; k8s: deploy/deployment.yml + secret.yml (bring your own Redis + ingress)
 npm run check:upstream   # spawns the official servers through the pool, lists tools, checks the arg policy
 python3 scripts/smoke.py [tool]      # full flow as a fake MCP client: DCR → browser login → enrol → tokens → tools/call → refresh
 npx tsx scripts/dev-token.ts <api-token>   # mint a bridge bearer for curl tests without the login (--remove to clean up)
@@ -57,6 +58,8 @@ CLIENT_ID=… ./scripts/scope-probe.sh ; python3 scripts/oauth-probe.py   # the 
 
 ## Status (2026-09-28)
 
-Local end-to-end smoke green (real calendar list through the bridge). Next: public HTTPS
-deployment and first connect from claude.ai; Redis `Store`; upstream PR for a library
-export so the proxy could run in-process.
+Local end-to-end smoke green (real calendar list through the bridge). Docker image (Node 24,
+read-only rootfs OK), local Compose, Redis store, and a minimal k8s example (`deploy/`) ready.
+Next: push image, deploy, run smoke.py against the public URL, first connect from Claude
+Code then claude.ai. Decided (2026-09-28): keep child processes, ~20 users; in-process/worker variants
+were measured and rejected as not worth the internals dependency.

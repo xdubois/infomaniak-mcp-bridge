@@ -1,0 +1,23 @@
+# Local run of the image. For Kubernetes see deploy/deployment.yml + deploy/secret.yml.
+services:
+  bridge:
+    build: .
+    image: infomaniak-mcp-bridge
+    init: true                    # reaps the upstream child processes if the bridge dies
+    restart: unless-stopped
+    env_file: .env                # PUBLIC_URL, INFOMANIAK_CLIENT_ID/SECRET, BRIDGE_ENCRYPTION_KEY, ...
+    environment:                  # container-specific values win over .env
+      TRUST_PROXY: "true"
+      SQLITE_PATH: /data/bridge.sqlite
+    volumes:
+      - bridge-data:/data
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 2g                 # ~75 MB per upstream process; the default MAX_PROCESSES=20 fits with room
+    ports:
+      - "127.0.0.1:3000:3000"
+
+volumes:
+  bridge-data:

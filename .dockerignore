@@ -1,0 +1,10 @@
+.git
+node_modules
+dist
+data
+.env*
+.token.json
+scripts
+*.md
+__pycache__
+deploy
