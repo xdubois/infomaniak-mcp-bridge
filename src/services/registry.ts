@@ -1,6 +1,6 @@
 import {createRequire} from "node:module";
 import path from "node:path";
-import {apiGet} from "../infomaniak/api.js";
+import {apiProbe} from "../infomaniak/api.js";
 
 /**
  * One Infomaniak product exposed by the bridge, backed by Infomaniak's OFFICIAL MCP server
@@ -16,7 +16,17 @@ export interface Service {
     pkg: string;
     /** Environment variable that package reads its API token from. */
     tokenEnv: string;
-    /** Cheap authenticated GET (full URL) that fails without this service's scope (used at enrolment). */
+    /**
+     * Deployment-level settings the package also reads from its environment (e.g. the kChat team,
+     * the kDrive id). Copied from the bridge's own environment into the child's; must be set when
+     * the service is enabled. One value per deployment, i.e. one team / one drive for all users.
+     */
+    requiredEnv?: string[];
+    /**
+     * Cheap authenticated GET (full URL, `${VAR}` placeholders from requiredEnv) that fails without
+     * this service's scope; run at enrolment. Any 2xx counts, so it works for Infomaniak's
+     * `{result, data}` envelope and for kChat's plain (Mattermost-style) JSON alike.
+     */
     probeUrl: string;
     /**
      * Proxy policy: tool input arguments hidden from tools/list and rejected on tools/call.
@@ -48,15 +58,58 @@ const calendar: Service = {
     probeUrl: "https://api.infomaniak.com/1/calendar/pim/calendar",
 };
 
-export const ALL_SERVICES: Readonly<Record<string, Service>> = {mail, calendar};
+const contact: Service = {
+    name: "contact",
+    title: "Contacts",
+    scopes: ["contacts"],
+    pkg: "@infomaniak/mcp-server-contact",
+    tokenEnv: "CONTACT_TOKEN",
+    probeUrl: "https://contacts.infomaniak.com/api/pim/contact/all",
+};
 
-export function resolveServices(names: string[]): Service[] {
+const kchat: Service = {
+    name: "kchat",
+    title: "kChat",
+    scopes: ["kchat"],
+    pkg: "@infomaniak/mcp-server-kchat",
+    tokenEnv: "KCHAT_TOKEN",
+    // The team is the subdomain of your kChat URL (https://<team>.kchat.infomaniak.com/...).
+    requiredEnv: ["KCHAT_TEAM_NAME"],
+    probeUrl: "https://${KCHAT_TEAM_NAME}.kchat.infomaniak.com/api/v4/teams/name/${KCHAT_TEAM_NAME}",
+};
+
+const kdrive: Service = {
+    name: "kdrive",
+    title: "kDrive",
+    scopes: ["drive"],
+    pkg: "@infomaniak/mcp-server-kdrive",
+    tokenEnv: "KDRIVE_TOKEN",
+    // The drive id is in the kDrive web app URL (https://ksuite.infomaniak.com/all/kdrive/app/drive/<id>).
+    requiredEnv: ["KDRIVE_ID"],
+    // File id 1 is the drive's root directory.
+    probeUrl: "https://api.infomaniak.com/3/drive/${KDRIVE_ID}/files/1",
+};
+
+export const ALL_SERVICES: Readonly<Record<string, Service>> = {mail, calendar, contact, kchat, kdrive};
+
+/** Enabled services, checked against the environment for the settings they need. */
+export function resolveServices(names: string[], env: NodeJS.ProcessEnv = process.env): Service[] {
     const unknown = names.filter((n) => !(n in ALL_SERVICES));
     if (unknown.length) {
         throw new Error(`Unknown ENABLED_SERVICES: ${unknown.join(", ")} (known: ${Object.keys(ALL_SERVICES).join(", ")})`);
     }
     if (!names.length) throw new Error("ENABLED_SERVICES must name at least one service");
-    return names.map((n) => ALL_SERVICES[n]);
+    const services = names.map((n) => ALL_SERVICES[n]);
+    for (const s of services) {
+        const missing = (s.requiredEnv ?? []).filter((v) => !env[v]);
+        if (missing.length) throw new Error(`Service "${s.name}" needs ${missing.join(", ")} in the environment`);
+    }
+    return services;
+}
+
+/** The service's deployment-level settings (requiredEnv), read from the given environment. */
+export function serviceEnv(service: Service, env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+    return Object.fromEntries((service.requiredEnv ?? []).map((v) => [v, env[v] ?? ""]));
 }
 
 /** Scopes an enrolled API token needs: user_info (identity check) + every enabled service's scopes. */
@@ -65,8 +118,10 @@ export function requiredScopes(services: Service[]): string[] {
 }
 
 /** Throws (with Infomaniak's own error text, e.g. the missing scope) if the token can't use this service. */
-export async function probeService(service: Service, apiToken: string): Promise<void> {
-    await apiGet(service.probeUrl, apiToken);
+export async function probeService(service: Service, apiToken: string, env: NodeJS.ProcessEnv = process.env): Promise<void> {
+    const values = serviceEnv(service, env);
+    const url = service.probeUrl.replace(/\$\{([A-Z0-9_]+)\}/g, (_m, name: string) => encodeURIComponent(values[name] ?? ""));
+    await apiProbe(url, apiToken);
 }
 
 const require = createRequire(import.meta.url);

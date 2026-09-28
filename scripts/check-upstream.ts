@@ -3,9 +3,11 @@
 // Usage: npm run check:upstream
 import {applyPolicy, policyViolation} from "../src/mcp.js";
 import {ProcessPool} from "../src/services/pool.js";
-import {resolveServices, upstreamVersion} from "../src/services/registry.js";
+import {ALL_SERVICES, resolveServices, upstreamVersion} from "../src/services/registry.js";
 
-const names = (process.env.ENABLED_SERVICES ?? "mail,calendar").split(",").map((s) => s.trim()).filter(Boolean);
+const names = (process.env.ENABLED_SERVICES ?? Object.keys(ALL_SERVICES).join(",")).split(",").map((s) => s.trim()).filter(Boolean);
+// Deployment settings the packages insist on at startup (team name, drive id): dummies are fine here.
+for (const s of Object.values(ALL_SERVICES)) for (const v of s.requiredEnv ?? []) process.env[v] ??= "check";
 const pool = new ProcessPool({idleTtlSec: 60, max: 10, version: "check"});
 let failed = false;
 

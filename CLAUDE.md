@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Remote MCP bridge: exposes Infomaniak's **official** stdio MCP servers
-(`@infomaniak/mcp-server-mail`, `@infomaniak/mcp-server-calendar`, run unmodified as
+(`@infomaniak/mcp-server-{mail,calendar,contact,kchat,kdrive}`, run unmodified as
 child processes) as one Streamable HTTP endpoint (`/mcp`) with the OAuth flow claude.ai
 custom connectors need. README.md = user-facing setup; NOTES.md = probe findings and the
 reasoning behind the design. Read both before changing auth or service code.
@@ -31,7 +31,9 @@ CLIENT_ID=… ./scripts/scope-probe.sh ; python3 scripts/oauth-probe.py   # the 
 - `infomaniak/oidc.ts` identity-only login; `infomaniak/api.ts` `apiGet` (path on
   api.infomaniak.com or full URL) + `fetchProfile`.
 - `services/registry.ts` one entry per product: npm package, token env var, scopes,
-  `probeUrl`, `hiddenArgs` policy. `services/pool.ts` per-(user, service, token) child
+  `requiredEnv` (deployment-level settings such as `KCHAT_TEAM_NAME`, `KDRIVE_ID`, copied into
+  the child env and validated at startup), `probeUrl` (`${VAR}` placeholders), `hiddenArgs`
+  policy. `services/pool.ts` per-(user, service, token) child
   processes with idle reaping. `mcp.ts` stateless per-request proxy: merges tools/list,
   routes tools/call by prefix, enforces policy.
 - `store/` tiny KV interface (`get/set/del` + TTL): `sqlite.ts` (node:sqlite, one replica) and
@@ -47,7 +49,10 @@ CLIENT_ID=… ./scripts/scope-probe.sh ; python3 scripts/oauth-probe.py   # the 
   packages; upgrade with `npm update`. Fix upstream problems with proxy policy
   (`hiddenArgs`) or an upstream PR, not local patches.
 - Mail server talks to `https://mail.infomaniak.com/api`, calendar to
-  `https://api.infomaniak.com/1/calendar/pim`; probes must use the right host.
+  `https://api.infomaniak.com/1/calendar/pim`, contacts to `https://contacts.infomaniak.com/api/pim`,
+  kDrive to `https://api.infomaniak.com/{2,3}/drive/<id>`, kChat to
+  `https://<team>.kchat.infomaniak.com/api/v4` (Mattermost-style JSON, no `{result,data}`
+  envelope: `apiProbe` accepts any 2xx). Probes must use the right host.
 - Upstream mail `attachments` = local file paths read by the server process → hidden and
   rejected by policy. Upstream calendar's invalid-token error is unhelpful
   ("Cannot read properties of undefined") — upstream issue, not ours.

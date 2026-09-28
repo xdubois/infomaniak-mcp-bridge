@@ -16,7 +16,9 @@ metadata:
 data:
   PUBLIC_URL: "https://bridge.example.com"   # what claude.ai reaches; the MCP endpoint is <PUBLIC_URL>/mcp
   STORE: "redis"                             # REDIS_URL lives in the Secret
-  ENABLED_SERVICES: "mail,calendar"
+  ENABLED_SERVICES: "mail,calendar"           # add contact, kchat, kdrive as needed
+  #KCHAT_TEAM_NAME: "your-team"               # required with kchat
+  #KDRIVE_ID: "12"                            # required with kdrive
   TRUST_PROXY: "true"                        # proxy hops setting X-Forwarded-*: true for the ingress alone, "2" with an L7 LB in front of it
   MAX_PROCESSES: "20"                        # upstream child processes per replica, ~75 MB each
   #ALLOWED_EMAIL_DOMAINS: "example.com"      # optional extra sign-in guard

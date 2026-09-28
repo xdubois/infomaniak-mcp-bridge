@@ -2,7 +2,7 @@ import {Client} from "@modelcontextprotocol/sdk/client/index.js";
 import {getDefaultEnvironment, StdioClientTransport} from "@modelcontextprotocol/sdk/client/stdio.js";
 import type {Tool} from "@modelcontextprotocol/sdk/types.js";
 import {sha256} from "../crypto.js";
-import {serverEntrypoint, type Service} from "./registry.js";
+import {serverEntrypoint, serviceEnv, type Service} from "./registry.js";
 
 export interface PooledServer {
     key: string;
@@ -61,8 +61,9 @@ export class ProcessPool {
         const transport = new StdioClientTransport({
             command: process.execPath,
             args: [serverEntrypoint(service)],
-            // Only a sanitised base environment + the one token: never the bridge's own secrets.
-            env: {...getDefaultEnvironment(), [service.tokenEnv]: apiToken},
+            // Only a sanitised base environment, the service's deployment settings (team, drive id)
+            // and the one token: never the bridge's own secrets.
+            env: {...getDefaultEnvironment(), ...serviceEnv(service), [service.tokenEnv]: apiToken},
             stderr: "pipe",
         });
         transport.stderr?.on("data", (chunk: Buffer) => {

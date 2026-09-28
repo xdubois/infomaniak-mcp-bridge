@@ -1,8 +1,9 @@
 # Infomaniak MCP Bridge
 
-Infomaniak publishes MCP servers for [mail](https://github.com/Infomaniak/mcp-server-mail)
-and [calendar](https://github.com/Infomaniak/mcp-server-calendar), but they are stdio
-processes fed by a static API token: fine for Claude Desktop, unusable from claude.ai.
+Infomaniak publishes MCP servers for its kSuite products, [mail](https://github.com/Infomaniak/mcp-server-mail),
+[calendar](https://github.com/Infomaniak/mcp-server-calendar), [contacts](https://github.com/Infomaniak/mcp-server-contact),
+[kChat](https://github.com/Infomaniak/mcp-server-kchat) and [kDrive](https://github.com/Infomaniak/mcp-server-kdrive),
+but they are stdio processes fed by a static API token: fine for Claude Desktop, unusable from claude.ai.
 This bridge exposes those **same, unmodified servers** as one remote MCP server
 (Streamable HTTP) with the OAuth flow claude.ai's custom connectors expect.
 
@@ -22,7 +23,19 @@ Infomaniak's OAuth only does identity for third-party apps (its apps can request
    `tools/call` to that user's **official Infomaniak MCP server processes**
    (`@infomaniak/mcp-server-*` from npm, spawned with the user's token in their
    environment, pooled per user with an idle timeout). Tool lists are merged
-   (`mail_*`, `calendar_*`). The HTTP side is stateless, so any replica can serve any request.
+   (`mail_*`, `calendar_*`, …). The HTTP side is stateless, so any replica can serve any request.
+
+| Service | Package | Tools | Extra setting |
+|---|---|---|---|
+| `mail` | `@infomaniak/mcp-server-mail` | 20 `mail_*` | |
+| `calendar` | `@infomaniak/mcp-server-calendar` | 6 `calendar_*` | |
+| `contact` | `@infomaniak/mcp-server-contact` | 2 `contact_*` | |
+| `kchat` | `@infomaniak/mcp-server-kchat` | 9 `kchat_*` | `KCHAT_TEAM_NAME` |
+| `kdrive` | `@infomaniak/mcp-server-kdrive` | 14 `kdrive_*` | `KDRIVE_ID` |
+
+The extra settings are per deployment: one kChat team and one kDrive for every user of the
+bridge, which fits an organisation. The API token each user enrols must carry the scopes of
+the enabled services (shown on the enrolment page).
 
 ## Setup
 
@@ -85,7 +98,8 @@ otherwise the per-client rate limits collapse onto the balancer's address.
 | `BRIDGE_ENCRYPTION_KEY` | | 32 bytes base64; encrypts stored API tokens |
 | `STORE` | `sqlite` | `sqlite` (one replica, local file) or `redis` (shared by replicas) |
 | `SQLITE_PATH` / `REDIS_URL` | `./data/bridge.sqlite` / | Location of that store |
-| `ENABLED_SERVICES` | `mail,calendar` | Which products to expose; drives processes, tools and required scopes |
+| `ENABLED_SERVICES` | `mail,calendar` | Which products to expose (`mail`, `calendar`, `contact`, `kchat`, `kdrive`); drives processes, tools and required scopes |
+| `KCHAT_TEAM_NAME` / `KDRIVE_ID` | | Needed when `kchat` / `kdrive` is enabled: the subdomain of your kChat URL, the id in your kDrive URL |
 | `ALLOWED_EMAIL_DOMAINS` | | Optional extra sign-in guard |
 | `PROCESS_IDLE_TTL` / `MAX_PROCESSES` | `600` / `20` | Upstream process pool per replica (one Node process each; size to memory) |
 | `ACCESS_TOKEN_TTL` / `REFRESH_TOKEN_TTL` | `3600` / 30 days | Bridge tokens (opaque, stored hashed) |
@@ -94,8 +108,11 @@ otherwise the per-client rate limits collapse onto the balancer's address.
 ## Adding a service
 
 One entry in `src/services/registry.ts`: the npm package of Infomaniak's server, the env
-var it reads its token from, the API scopes it needs and a probe path. `npm install` the
-package, enable it with `ENABLED_SERVICES`. Upgrading a service is `npm update`.
+var it reads its token from, the API scopes it needs, any other env vars it insists on
+(`requiredEnv`, per deployment) and a probe URL (`${VAR}` placeholders allowed) that fails
+without the scope. `npm install` the package, enable it with `ENABLED_SERVICES`. Upgrading
+a service is `npm update`; `npm run check:upstream` spawns every known package and checks the
+argument policy.
 
 ## Security notes
 
