@@ -115,3 +115,7 @@ package, enable it with `ENABLED_SERVICES`. Upgrading a service is `npm update`.
   registry) removes arguments that are unsafe on a shared host from the tool schemas and
   rejects calls using them: upstream mail's `attachments` are local file paths read by the
   server process, which here would be the bridge's own disk.
+
+## License
+
+MIT, see `LICENSE`. The upstream Infomaniak MCP servers are MIT as well.
