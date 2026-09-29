@@ -11,6 +11,8 @@ import type {PendingAuthorize, Repo} from "../store/repo.js";
 
 export const PENDING_TTL = 10 * 60; // user has 10 min to sign in + enrol
 const CODE_TTL = 5 * 60;
+/** RFC 6749 §10.4: tolerate a refresh replayed right after rotation (client retry after a network blip). */
+const ROTATION_GRACE_SEC = 60;
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 
@@ -114,14 +116,19 @@ export class BridgeAuthProvider implements OAuthServerProvider {
     ): Promise<OAuthTokens> {
         const hash = sha256(refreshToken);
         const rec = await this.repo.getToken(hash);
-        if (!rec || rec.kind !== "refresh" || rec.clientId !== client.client_id || rec.expiresAt <= nowSec()) {
+        if (!rec || (rec.kind !== "refresh" && rec.kind !== "rotated") || rec.clientId !== client.client_id || rec.expiresAt <= nowSec()) {
             throw new InvalidGrantError("Invalid refresh token");
         }
         // RFC 6749 §6: a refresh may narrow the grant, never widen it; the resource stays the same.
         if (scopes?.some((s) => !rec.scopes.includes(s))) throw new InvalidScopeError("Requested scope exceeds the original grant");
         if (resource && rec.resource && resource.href !== rec.resource) throw new InvalidGrantError("resource mismatch");
-        // Rotate: the old refresh token and its access token die together.
-        await this.repo.delToken(hash);
+        if (rec.kind === "rotated") {
+            // Replay of a token we already rotated, within the grace window: re-issue the same grant
+            // instead of failing the client's retry. Outside the window the record has expired.
+            return this.issueTokens(rec.userId, client.client_id, scopes ?? rec.scopes, rec.resource);
+        }
+        // Rotate: the old refresh token becomes a short-lived replay marker and its access token dies.
+        await this.repo.putToken(hash, {...rec, kind: "rotated", expiresAt: nowSec() + ROTATION_GRACE_SEC}, ROTATION_GRACE_SEC);
         if (rec.pairHash) await this.repo.delToken(rec.pairHash);
         return this.issueTokens(rec.userId, client.client_id, scopes ?? rec.scopes, rec.resource);
     }

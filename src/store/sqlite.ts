@@ -5,6 +5,8 @@ import type {Store} from "./types.js";
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 
+// node:sqlite is synchronous: every get/set blocks the event loop briefly. Fine for a
+// single-replica deployment at this user scale; move to STORE=redis when scaling out.
 export class SqliteStore implements Store {
     private readonly db: DatabaseSync;
     private readonly getStmt: StatementSync;

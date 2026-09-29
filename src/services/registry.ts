@@ -132,6 +132,11 @@ export function serverEntrypoint(service: Service): string {
     const pkg = require(pkgJsonPath) as {bin?: string | Record<string, string>; version: string};
     const bin = typeof pkg.bin === "string" ? pkg.bin : Object.values(pkg.bin ?? {})[0];
     if (!bin) throw new Error(`${service.pkg} has no bin entry`);
+    if (typeof pkg.bin === "object" && Object.keys(pkg.bin).length > 1) {
+        // Ambiguous: we'd silently run whichever bin sorts first. Fail loudly so the entry
+        // can be pinned here if upstream ever ships a second executable.
+        throw new Error(`${service.pkg} has multiple bin entries (${Object.keys(pkg.bin).join(", ")}); pin one in serverEntrypoint()`);
+    }
     return path.resolve(path.dirname(pkgJsonPath), bin);
 }
 

@@ -8,6 +8,8 @@
 const AUTHORIZE_URL = "https://login.infomaniak.com/authorize";
 const TOKEN_URL = "https://login.infomaniak.com/token";
 const USERINFO_URL = "https://login.infomaniak.com/oauth2/userinfo";
+/** Outbound HTTP budget: a hang guard, not a tuning knob. */
+const FETCH_TIMEOUT_MS = 10_000;
 
 export interface Identity {
     /** Infomaniak user id, as a string. */
@@ -46,6 +48,7 @@ export class InfomaniakOidc {
                 code,
                 code_verifier: codeVerifier,
             }),
+            signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
         });
         if (!res.ok) {
             throw new Error(`Infomaniak token endpoint HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
@@ -55,7 +58,10 @@ export class InfomaniakOidc {
         let email: string | undefined;
         let sub: string | undefined;
         try {
-            const ui = await fetch(USERINFO_URL, {headers: {Authorization: `Bearer ${tok.access_token}`, Accept: "application/json"}});
+            const ui = await fetch(USERINFO_URL, {
+                headers: {Authorization: `Bearer ${tok.access_token}`, Accept: "application/json"},
+                signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+            });
             if (ui.ok) {
                 const info = (await ui.json()) as {sub?: string | number; email?: string};
                 email = info.email;

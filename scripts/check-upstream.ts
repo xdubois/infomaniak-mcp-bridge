@@ -17,7 +17,12 @@ for (const s of resolveServices(names)) {
         const tools = (await pool.listTools(entry)).map((t) => applyPolicy(s, t));
         const hidden = s.hiddenArgs?.names ?? [];
         const leaked = tools.filter((t) => hidden.some((n) => n in (t.inputSchema.properties ?? {})));
+        const unprefixed = tools.filter((t) => !t.name.startsWith(`${s.name}_`));
         console.log(`${s.name}  ${s.pkg}@${upstreamVersion(s)}  ${tools.length} tools: ${tools.map((t) => t.name).join(", ")}`);
+        if (unprefixed.length) {
+            failed = true;
+            console.error(`  UNPREFIXED TOOLS (the /mcp router routes by "${s.name}_"): ${unprefixed.map((t) => t.name).join(", ")}`);
+        }
         if (leaked.length) {
             failed = true;
             console.error(`  POLICY LEAK: ${hidden.join(",")} still visible in ${leaked.map((t) => t.name).join(", ")}`);

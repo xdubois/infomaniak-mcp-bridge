@@ -66,7 +66,17 @@ export function mcpRouter({cfg, repo, provider, services, pool, version}: Deps):
             res.status(401).json({error: "invalid_token", error_description: "No Infomaniak API token enrolled; reconnect the connector"});
             return;
         }
-        const apiToken = decrypt(user.apiTokenEnc, cfg.encryptionKey);
+        let apiToken: string;
+        try {
+            apiToken = decrypt(user.apiTokenEnc, cfg.encryptionKey);
+        } catch (e) {
+            // E.g. the encryption key was rotated: treat as "no usable token" so the client
+            // re-runs the OAuth flow and re-enrols, instead of a raw 500.
+            console.error(`[mcp] stored API token undecryptable for user ${user.id}: ${errorMessage(e)}`);
+            res.set("WWW-Authenticate", `Bearer error="invalid_token", error_description="No Infomaniak API token enrolled", resource_metadata="${resourceMetadataUrl}"`);
+            res.status(401).json({error: "invalid_token", error_description: "No Infomaniak API token enrolled; reconnect the connector"});
+            return;
+        }
         const upstream = (service: Service) => pool.acquire(service, user.id, apiToken);
 
         const server = new Server({name: "infomaniak-mcp-bridge", version}, {capabilities: {tools: {}}});
@@ -85,24 +95,13 @@ export function mcpRouter({cfg, repo, provider, services, pool, version}: Deps):
 
         server.setRequestHandler(CallToolRequestSchema, async (req) => {
             const {name, arguments: args} = req.params;
-            const service = await routeTool(name);
+            const service = services.find((s) => name.startsWith(`${s.name}_`));
             if (!service) return errorResult(`Unknown tool: ${name}`);
             const violation = policyViolation(service, args);
             if (violation) return errorResult(violation);
             const entry = await upstream(service);
             return (await entry.client.callTool({name, arguments: args ?? {}}, undefined, {timeout: UPSTREAM_TIMEOUT_MS})) as CallToolResult;
         });
-
-        /** Upstream tools are prefixed (mail_*, calendar_*); fall back to the cached lists otherwise. */
-        async function routeTool(name: string): Promise<Service | undefined> {
-            const byPrefix = services.find((s) => name.startsWith(`${s.name}_`));
-            if (byPrefix) return byPrefix;
-            for (const s of services) {
-                const tools = await pool.listTools(await upstream(s)).catch(() => []);
-                if (tools.some((t) => t.name === name)) return s;
-            }
-            return undefined;
-        }
 
         const transport = new StreamableHTTPServerTransport({sessionIdGenerator: undefined, enableJsonResponse: true});
         res.on("close", () => {

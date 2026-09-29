@@ -109,12 +109,21 @@ export function authRoutes({cfg, repo, oidc, provider, services}: Deps): Router 
         await repo.putPending(pending, PENDING_TTL);
 
         if (user.apiTokenEnc) {
-            const check = await tokenOwnedBy(decrypt(user.apiTokenEnc, cfg.encryptionKey), user);
-            if (check.ok) {
-                res.redirect(302, await provider.completeAuthorization(pending, user.id));
-                return;
+            let stored: string | undefined;
+            try {
+                stored = decrypt(user.apiTokenEnc, cfg.encryptionKey);
+            } catch (e) {
+                // E.g. the encryption key was rotated: ask for a fresh token instead of a raw 500.
+                console.warn(`[auth] stored API token undecryptable for user ${user.id}: ${errorMessage(e)}`);
             }
-            console.warn(`[auth] stored API token for user ${user.id} no longer valid: ${check.reason}`);
+            if (stored !== undefined) {
+                const check = await tokenOwnedBy(stored, user);
+                if (check.ok) {
+                    res.redirect(302, await provider.completeAuthorization(pending, user.id));
+                    return;
+                }
+                console.warn(`[auth] stored API token for user ${user.id} no longer valid: ${check.reason}`);
+            }
             res.redirect(302, `/auth/enrol?p=${encodeURIComponent(pending.id)}&reason=invalid`);
             return;
         }

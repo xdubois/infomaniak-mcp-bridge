@@ -1,4 +1,6 @@
 const API_BASE = "https://api.infomaniak.com";
+/** Outbound HTTP budget: Infomaniak endpoints answer in well under a second; this is a hang guard, not a tuning knob. */
+const FETCH_TIMEOUT_MS = 10_000;
 
 export class InfomaniakApiError extends Error {
     constructor(
@@ -32,6 +34,7 @@ export async function apiGet<T = unknown>(pathOrUrl: string, apiToken: string): 
     const url = /^https?:\/\//.test(pathOrUrl) ? pathOrUrl : `${API_BASE}${pathOrUrl}`;
     const res = await fetch(url, {
         headers: {Authorization: `Bearer ${apiToken}`, Accept: "application/json"},
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     const body = (await res.json().catch(() => ({}))) as Envelope<T>;
     if (!res.ok || body.result !== "success" || body.data === undefined) {
@@ -47,7 +50,10 @@ export async function apiGet<T = unknown>(pathOrUrl: string, apiToken: string): 
  * plain APIs such as kChat, else the HTTP status.
  */
 export async function apiProbe(url: string, apiToken: string): Promise<void> {
-    const res = await fetch(url, {headers: {Authorization: `Bearer ${apiToken}`, Accept: "application/json"}});
+    const res = await fetch(url, {
+        headers: {Authorization: `Bearer ${apiToken}`, Accept: "application/json"},
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
     const body = (await res.json().catch(() => ({}))) as Envelope<unknown> & {message?: string};
     if (res.ok && body.result !== "error") return;
     const err = body.error ?? {};

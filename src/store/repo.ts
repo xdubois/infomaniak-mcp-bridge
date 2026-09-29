@@ -48,7 +48,7 @@ export interface CodeRecord {
 }
 
 export interface TokenRecord {
-    kind: "access" | "refresh";
+    kind: "access" | "refresh" | "rotated";
     clientId: string;
     userId: string;
     scopes: string[];
