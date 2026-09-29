@@ -78,6 +78,7 @@ export function mcpRouter({cfg, repo, provider, services, pool, version}: Deps):
             return;
         }
         const upstream = (service: Service) => pool.acquire(service, user.id, apiToken);
+        const clientId = req.auth?.clientId ?? "unknown";
 
         const server = new Server({name: "infomaniak-mcp-bridge", version}, {capabilities: {tools: {}}});
 
@@ -95,12 +96,31 @@ export function mcpRouter({cfg, repo, provider, services, pool, version}: Deps):
 
         server.setRequestHandler(CallToolRequestSchema, async (req) => {
             const {name, arguments: args} = req.params;
+            const started = Date.now();
+            // Audit trail: who called what through which client. Tool ARGUMENTS are never
+            // logged (they carry message bodies, file names, ...); the outcome line is the
+            // only record of a user's actions on the shared host.
+            const audit = (outcome: string, detail = "") =>
+                console.info(`[audit] user=${user.id} client=${clientId} tool=${name} ${outcome}${detail ? ` (${detail})` : ""} ${Date.now() - started}ms`);
             const service = services.find((s) => name.startsWith(`${s.name}_`));
-            if (!service) return errorResult(`Unknown tool: ${name}`);
+            if (!service) {
+                audit("rejected", "unknown tool");
+                return errorResult(`Unknown tool: ${name}`);
+            }
             const violation = policyViolation(service, args);
-            if (violation) return errorResult(violation);
-            const entry = await upstream(service);
-            return (await entry.client.callTool({name, arguments: args ?? {}}, undefined, {timeout: UPSTREAM_TIMEOUT_MS})) as CallToolResult;
+            if (violation) {
+                audit("rejected", "policy");
+                return errorResult(violation);
+            }
+            try {
+                const entry = await upstream(service);
+                const result = (await entry.client.callTool({name, arguments: args ?? {}}, undefined, {timeout: UPSTREAM_TIMEOUT_MS})) as CallToolResult;
+                audit(result.isError ? "error" : "ok");
+                return result;
+            } catch (e) {
+                audit("error", errorMessage(e));
+                throw e;
+            }
         });
 
         const transport = new StreamableHTTPServerTransport({sessionIdGenerator: undefined, enableJsonResponse: true});
