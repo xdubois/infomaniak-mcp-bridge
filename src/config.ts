@@ -1,13 +1,24 @@
 import {z} from "zod";
 
 const csv = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
-const bool = z.string().default("false").transform((s) => ["1", "true", "yes"].includes(s.toLowerCase()));
+/** Booleans accept 1/true/yes (any case); anything else is a config error, not a silent false. */
+const bool = z
+    .string()
+    .transform((s) => s.trim().toLowerCase())
+    .refine((v) => ["1", "true", "yes", "0", "false", "no", ""].includes(v), {message: "not a boolean; use true/false (1/0, yes/no also work)"})
+    .transform((v) => ["1", "true", "yes"].includes(v));
 /** Express "trust proxy": false, a hop count (true = 1), or a comma list of CIDRs / keywords such as `loopback`. */
-const trustProxy = z.string().default("false").transform((s): false | number | string => {
+const trustProxy = z.string().transform((s): false | number | string => {
     const v = s.trim().toLowerCase();
     if (["", "0", "false", "no"].includes(v)) return false;
     if (["1", "true", "yes"].includes(v)) return 1;
-    return /^\d+$/.test(v) ? Number(v) : s.trim();
+    if (/^\d+$/.test(v)) return Number(v);
+    // Express accepts only its keywords (loopback, linklocal, uniquelocal) and CIDRs;
+    // anything else (e.g. "on") would crash it at startup with a cryptic TypeError.
+    if (!/^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/.test(v) && !["loopback", "linklocal", "uniquelocal", "uniquelocalv4", "uniquelocalv6"].includes(v)) {
+        throw new Error(`TRUST_PROXY: "${s.trim()}" is not a valid value; use true/false, a hop count, or CIDRs / Express keywords (loopback, ...)`);
+    }
+    return s.trim();
 });
 
 const EnvSchema = z.object({
