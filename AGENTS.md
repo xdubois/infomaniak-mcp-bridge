@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 Remote MCP bridge: exposes Infomaniak's **official** stdio MCP servers
 (`@infomaniak/mcp-server-{mail,calendar,contact,kchat,kdrive}`, run unmodified as
@@ -63,10 +63,18 @@ CLIENT_ID=… ./scripts/scope-probe.sh ; python3 scripts/oauth-probe.py   # the 
   unnecessary: MCP clients register their callback with the bridge via DCR, Infomaniak only
   ever sees the bridge's own). A public deployment needs `<PUBLIC_URL>/auth/infomaniak/callback`.
 
-## Status (2026-09-28)
+## Status (2026-09-29)
 
 Local end-to-end smoke green (real calendar list through the bridge). Docker image (Node 24,
 read-only rootfs OK), local Compose, Redis store, a minimal k8s example (`deploy/`) and the
 GHCR publish workflow ready. Next: push, let CI publish `:main`, deploy, run smoke.py against
 the public URL, first connect from Claude Code then claude.ai. Decided (2026-09-28): keep child processes, ~20 users; in-process/worker variants
 were measured and rejected as not worth the internals dependency.
+
+Hardening pass (2026-09-29, post-review): 10s timeouts on all outbound fetches; 60s grace
+window on refresh-token rotation (RFC 6749 §10.4, replay re-issues the grant); tools/call
+routes by prefix only (check:upstream now fails CI on unprefixed upstream tools); decrypt
+failures degrade to the 401/re-enrolment path instead of a 500; multiple `bin` entries in an
+upstream package fail loudly; `[audit] user=… client=… tool=… outcome` console line per
+tools/call (arguments never logged); TRUST_PROXY and boolean env vars reject invalid values
+at startup instead of silently defaulting.
