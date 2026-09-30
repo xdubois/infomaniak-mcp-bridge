@@ -57,7 +57,7 @@ ${opts.error ? `<p class="err">${esc(opts.error)}</p>` : ""}
 <input id="token" type="text" name="token" required spellcheck="false" autocapitalize="off" autocomplete="off" data-1p-ignore data-lpignore="true" data-bwignore placeholder="paste the token you just created">
 <button type="submit">Save and continue to Claude</button>
 </form>
-<p class="muted">You can revoke this token any time in the Manager; the bridge then stops working until you connect again.</p>`,
+<p class="muted">Whoever operates this bridge can use the token you paste here: only continue if you trust them. You can revoke it any time in the Manager; the bridge then stops working until you connect again.</p>`,
     );
 }
 
@@ -96,7 +96,8 @@ export function landingPage(opts: {mcpUrl: string; services: Service[]}): string
 <li>In claude.ai, open <em>Settings &rsaquo; Connectors &rsaquo; Add custom connector</em> and paste the endpoint URL above. Leave the OAuth client fields empty: the bridge supports dynamic registration.</li>
 <li>Click <em>Connect</em>: you'll sign in with your Infomaniak account, then paste an Infomaniak API token once.</li>
 </ol>
-<p class="muted">Your API token is stored encrypted and is only sent to Infomaniak's own APIs.
-Want the bridge to forget it? <a href="/auth/forget">Sign in with Infomaniak and delete it</a>; revoke the token itself in the Manager.</p>`,
+<p class="muted">Your API token is stored encrypted and is only sent to Infomaniak's own APIs, but whoever operates this bridge holds it: connect only if you trust them.
+Want the bridge to forget it? <a href="/auth/forget">Sign in with Infomaniak and delete it</a>; revoke the token itself in the Manager.</p>
+<p class="muted">Community project, not affiliated with Infomaniak.</p>`,
     );
 }

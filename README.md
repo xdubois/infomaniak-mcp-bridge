@@ -3,6 +3,9 @@
 Use your Infomaniak **kSuite** (mail, calendar, contacts, kChat, kDrive) from claude.ai,
 Claude Code or any remote MCP client, through Infomaniak's own MCP servers.
 
+Community project, not affiliated with Infomaniak. **Host it yourself, or use an instance run
+by someone you trust:** the operator holds every user's API token (see [Security](#security)).
+
 ## Why
 
 Infomaniak publishes an MCP server per product: [mail](https://github.com/Infomaniak/mcp-server-mail),
@@ -60,8 +63,16 @@ variables (`.env.example` has them all):
 | `STORE` | `sqlite` | `sqlite` (`SQLITE_PATH`, one replica) or `redis` (`REDIS_URL`, shared by replicas) |
 | `TRUST_PROXY` | `false` | Proxy hops setting `X-Forwarded-*`: `true` for one ingress, `2` with an L7 load balancer in front, or CIDRs |
 | `ALLOWED_EMAIL_DOMAINS` | | Optional extra sign-in guard |
-| `MAX_PROCESSES` / `PROCESS_IDLE_TTL` | `20` / `600` | Upstream process pool per replica; about 75 MB per process |
+| `MAX_PROCESSES` / `PROCESS_IDLE_TTL` | `20` / `600` | Upstream process pool per replica; see sizing below |
 | `ACCESS_TOKEN_TTL` / `REFRESH_TOKEN_TTL` / `CLIENT_TTL` | 1 h / 30 d / 90 d | Bridge token and client registration lifetimes |
+
+**Sizing.** A user holds one process per enabled service while active and for
+`PROCESS_IDLE_TTL` seconds after (`tools/list` starts all of them): about 75 MB each for mail,
+calendar and kDrive, 60 MB for contacts and kChat, so a user of all five costs about 335 MB.
+The defaults (20 processes, 2 GB) serve about 10 simultaneously active users with mail and
+calendar, or 4 with all five services. Beyond that the pool evicts the least recently used
+process and respawns on demand (under 100 ms), so occasional users cost nothing while idle.
+Replicas on Redis add capacity linearly.
 
 ## Run it
 
@@ -99,6 +110,12 @@ as a fake client; `npx tsx scripts/dev-token.ts <api-token>` mints a bridge toke
 - The API token is the user's own, scoped and revocable in the Manager. The bridge hands it
   only to the official server process, which only talks to Infomaniak's APIs. Child processes
   get a sanitised environment, never the bridge's secrets.
+- **Whoever operates the bridge can decrypt and use every enrolled token.** Nothing on
+  Infomaniak's side prevents signing in to a stranger's bridge: the login works like "Sign in
+  with Google" (any Infomaniak account, unless the operator restricted the app to their
+  organisation), and the token pasted afterwards is the user's own. Only connect to an instance
+  you host or whose operator you trust; operators, tick the organisation restriction on the
+  OAuth app and set `ALLOWED_EMAIL_DOMAINS`.
 - Enrolment verifies the token belongs to the signed-in account and reaches every enabled
   service. Users can make the bridge forget them at `<PUBLIC_URL>/auth/forget`; every
   connected client then asks to reconnect.
