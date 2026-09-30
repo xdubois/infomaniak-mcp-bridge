@@ -2,7 +2,7 @@
 """End-to-end smoke test acting as a remote MCP client (what claude.ai does):
 
 discovery -> dynamic client registration -> /authorize (browser: Infomaniak login
-+ API-token enrolment on first run) -> code -> /token -> MCP initialize,
++ API-token enrolment on first run + consent) -> code -> /token -> MCP initialize,
 tools/list, one tools/call -> refresh-token rotation.
 
 Usage: BRIDGE_URL=http://localhost:3000 python3 scripts/smoke.py [tool_name]

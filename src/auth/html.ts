@@ -19,6 +19,7 @@ ol{padding-left:1.3rem}li{margin:.35rem 0}code{background:rgba(127,127,127,.15);
 label{display:block;font-weight:600;margin-top:1.2rem}
 input[type=text]{width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;box-sizing:border-box;font:inherit;padding:.6rem;border:1px solid var(--border);border-radius:6px;background:transparent;color:inherit}
 button{margin-top:1rem;font:inherit;font-weight:600;padding:.65rem 1.2rem;border:0;border-radius:6px;background:var(--accent);color:#fff;cursor:pointer}
+button.secondary{background:transparent;color:var(--fg);border:1px solid var(--border);margin-left:.6rem}
 .err{background:var(--errbg);border-left:4px solid var(--err);padding:.6rem .9rem;border-radius:4px;margin:1rem 0}
 .notice{background:var(--okbg);padding:.6rem .9rem;border-radius:4px;margin:1rem 0}
 </style></head><body><main>${body}</main></body></html>`;
@@ -57,6 +58,21 @@ ${opts.error ? `<p class="err">${esc(opts.error)}</p>` : ""}
 <button type="submit">Save and continue to Claude</button>
 </form>
 <p class="muted">You can revoke this token any time in the Manager; the bridge then stops working until you connect again.</p>`,
+    );
+}
+
+export function consentPage(opts: {pendingId: string; email?: string; clientName: string; redirectUri: string; services: Service[]}): string {
+    const serviceList = opts.services.map((s) => esc(s.title)).join(" and ");
+    return page(
+        "Allow this connection?",
+        `<h1>Allow this connection?</h1>
+<p><strong>${esc(opts.clientName)}</strong> wants to use your Infomaniak ${serviceList} through this bridge${opts.email ? `, as <strong>${esc(opts.email)}</strong>` : ""}.</p>
+<p>If you allow it, it will be sent back to:<br><code>${esc(opts.redirectUri)}</code></p>
+<p class="muted">Only allow this if you started the connection yourself from that app (claude.ai, Claude Code, …) and the address above is where you expect to return. Anyone can register a client with this bridge, so the name alone proves nothing.</p>
+<form method="post" action="/auth/consent">
+<input type="hidden" name="p" value="${esc(opts.pendingId)}">
+<button type="submit" name="decision" value="allow">Allow</button><button type="submit" name="decision" value="deny" class="secondary">Deny</button>
+</form>`,
     );
 }
 

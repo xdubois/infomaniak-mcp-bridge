@@ -25,7 +25,10 @@ and puts the remote transport and the login in front of them.
 3. **One API token per user, once.** The user pastes an Infomaniak API token carrying the
    scopes of the enabled services. The bridge checks it belongs to the signed-in account and
    works for each service, then stores it encrypted (AES-256-GCM).
-4. **Official servers as child processes.** Every request runs against the user's own
+4. **Consent per client.** Before the code goes back, the user sees which client asked (name
+   and redirect URI) and allows or denies it. Anyone can register a client, so this is what
+   keeps a link crafted by someone else from connecting their client to your account.
+5. **Official servers as child processes.** Every request runs against the user's own
    instances of Infomaniak's packages, spawned with that token and pooled with an idle
    timeout. Tool lists are merged, calls routed by prefix. The HTTP side is stateless.
 
@@ -69,8 +72,8 @@ cp .env.example .env    # fill the OAuth app and the encryption key
 npm install && npm run dev
 ```
 
-**Docker.** Image `ghcr.io/xdubois/infomaniak-mcp-bridge` (`main`, `sha-<commit>`, and
-`X.Y.Z` / `latest` on release tags), built by GitHub Actions on Node 24, non-root, fine with
+**Docker.** Image `ghcr.io/xdubois/infomaniak-mcp-bridge` (`0.1.0` / `0.1` / `latest` on
+release tags, `main` and `sha-<commit>` for every commit), built by GitHub Actions on Node 24, non-root, fine with
 a read-only root filesystem. `docker compose up -d --build` runs it on `127.0.0.1:3000`; with
 plain `docker run`, add `--init` so the child processes are reaped.
 
@@ -99,6 +102,8 @@ as a fake client; `npx tsx scripts/dev-token.ts <api-token>` mints a bridge toke
 - Enrolment verifies the token belongs to the signed-in account and reaches every enabled
   service. Users can make the bridge forget them at `<PUBLIC_URL>/auth/forget`; every
   connected client then asks to reconnect.
+- Every authorization ends on a consent page naming the client and its redirect URI, and the
+  request is re-keyed after the Infomaniak login so whoever started it cannot finish it.
 - Bridge tokens are random, stored as SHA-256, rotated on refresh; a refresh can narrow
   scopes, never widen them. Registered clients expire unless they keep issuing tokens.
 - Nothing sensitive is logged. Run the public instance behind TLS only, and give the bridge a

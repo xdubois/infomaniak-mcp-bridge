@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Remote MCP bridge: Infomaniak mail + calendar tools over Streamable HTTP with OAuth for claude.ai",
+  "description": "Remote MCP bridge: Infomaniak kSuite (mail, calendar, contacts, kChat, kDrive) tools over Streamable HTTP with OAuth for claude.ai",
   "license": "MIT",
   "repository": {
     "type": "git",

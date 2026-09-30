@@ -25,9 +25,11 @@ CLIENT_ID=… ./scripts/scope-probe.sh ; python3 scripts/oauth-probe.py   # the 
 - `main.ts` express app: SDK `mcpAuthRouter` (/authorize, /token, /register, /revoke,
   .well-known) + `auth/routes.ts` + `mcp.ts`; `/healthz`; landing page `/`.
 - `auth/provider.ts` the OAuth 2.1 authorization server (opaque tokens stored hashed,
-  refresh rotation, `completeAuthorization`). `auth/routes.ts` Infomaniak OIDC callback +
-  one-time API-token enrolment (`/auth/enrol`) + self-service forget (`/auth/forget`, deletes
-  the user record), `auth/html.ts` the pages.
+  refresh rotation, `completeAuthorization`). `auth/routes.ts` Infomaniak OIDC callback (re-keys the
+  parked request so only the browser that signed in can finish it) + one-time API-token
+  enrolment (`/auth/enrol`) + per-client consent page (`/auth/consent`, names the client and
+  its redirect URI; MCP spec requirement for proxies with one fixed upstream client) +
+  self-service forget (`/auth/forget`, deletes the user record), `auth/html.ts` the pages.
 - `infomaniak/oidc.ts` identity-only login; `infomaniak/api.ts` `apiGet` (path on
   api.infomaniak.com or full URL) + `fetchProfile`.
 - `services/registry.ts` one entry per product: npm package, token env var, scopes,
@@ -63,15 +65,19 @@ CLIENT_ID=… ./scripts/scope-probe.sh ; python3 scripts/oauth-probe.py   # the 
   unnecessary: MCP clients register their callback with the bridge via DCR, Infomaniak only
   ever sees the bridge's own). A public deployment needs `<PUBLIC_URL>/auth/infomaniak/callback`.
 
-## Status (2026-09-29)
+## Status (2026-09-30)
 
-Local end-to-end smoke green (real calendar list through the bridge). Docker image (Node 24,
-read-only rootfs OK), local Compose, Redis store, a minimal k8s example (`deploy/`) and the
-GHCR publish workflow ready. Next: push, let CI publish `:main`, deploy, run smoke.py against
-the public URL, first connect from Claude Code then claude.ai. Decided (2026-09-28): keep child processes, ~20 users; in-process/worker variants
-were measured and rejected as not worth the internals dependency.
+v0.1.0 released: repo public, CI publishes `ghcr.io/xdubois/infomaniak-mcp-bridge` (`0.1.0`,
+`0.1`, `latest`, `main`, `sha-*`), a private instance runs on Kubernetes with Redis. Releases:
+bump `version` in package.json, tag `vX.Y.Z`, push the tag; CI builds and pushes the image,
+then create the GitHub release from the tag. Decided (2026-09-28): keep child processes, ~20
+users; in-process/worker variants were measured and rejected as not worth the internals
+dependency. Known upstream nits: `mcp-server-contact` and `-kchat` still pin SDK 1.12 (npm
+audit flags its HTTP transport; they only ever run stdio here).
 
-Hardening pass (2026-09-29, post-review): 10s timeouts on all outbound fetches; 60s grace
+Pre-release review (2026-09-30): added the per-client consent page and callback re-keying
+(before, an enrolled user following a crafted `/authorize` link, or an Infomaniak login link
+someone else started, silently handed that client a grant). Hardening pass (2026-09-29, post-review): 10s timeouts on all outbound fetches; 60s grace
 window on refresh-token rotation (RFC 6749 §10.4, replay re-issues the grant); tools/call
 routes by prefix only (check:upstream now fails CI on unprefixed upstream tools); decrypt
 failures degrade to the 401/re-enrolment path instead of a 500; multiple `bin` entries in an

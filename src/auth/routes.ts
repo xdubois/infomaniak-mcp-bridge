@@ -5,7 +5,7 @@ import {errorMessage, fetchProfile, InfomaniakApiError} from "../infomaniak/api.
 import type {InfomaniakOidc} from "../infomaniak/oidc.js";
 import {probeService, requiredScopes, type Service} from "../services/registry.js";
 import type {PendingAuthorize, PendingForget, Repo, User} from "../store/repo.js";
-import {enrolPage, errorPage, forgottenPage} from "./html.js";
+import {consentPage, enrolPage, errorPage, forgottenPage} from "./html.js";
 import {PENDING_TTL, type BridgeAuthProvider} from "./provider.js";
 
 interface Deps {
@@ -54,6 +54,15 @@ export function authRoutes({cfg, repo, oidc, provider, services}: Deps): Router 
 
     const render = (res: import("express").Response, pending: PendingAuthorize, user: User | undefined, extra: {error?: string; notice?: string} = {}) =>
         res.status(extra.error ? 400 : 200).type("html").send(enrolPage({pendingId: pending.id, email: user?.email, services, scopes, ...extra}));
+    const enrolUrl = (pending: PendingAuthorize, reason?: string) => `/auth/enrol?p=${encodeURIComponent(pending.id)}${reason ? `&reason=${reason}` : ""}`;
+    const consentUrl = (pending: PendingAuthorize) => `/auth/consent?p=${encodeURIComponent(pending.id)}`;
+    /** The parked request behind the enrol / consent pages: sign-in completed, user record loaded. */
+    const signedIn = async (p: string | undefined): Promise<{pending: PendingAuthorize; user: User} | undefined> => {
+        const pending = p ? await repo.getPending(p) : undefined;
+        if (!pending || pending.action === "forget" || !pending.userId) return undefined;
+        const user = await repo.getUser(pending.userId);
+        return user ? {pending, user} : undefined;
+    };
 
     // Back from Infomaniak sign-in.
     r.get("/auth/infomaniak/callback", async (req, res) => {
@@ -105,8 +114,12 @@ export function authRoutes({cfg, repo, oidc, provider, services}: Deps): Router 
         const existing = await repo.getUser(identity.userId);
         const user: User = {...existing, id: identity.userId, email: identity.email ?? existing?.email};
         await repo.putUser(user);
-        pending.userId = user.id;
-        await repo.putPending(pending, PENDING_TTL);
+        // Re-key the parked request: from here on only the browser that completed the Infomaniak
+        // sign-in knows the id. Whoever started the flow knew the old one (it was the OIDC state),
+        // and if that was someone else they must not be able to finish it.
+        await repo.delPending(pending.id);
+        const session: PendingAuthorize = {...pending, id: randomToken(32), userId: user.id};
+        await repo.putPending(session, PENDING_TTL);
 
         if (user.apiTokenEnc) {
             let stored: string | undefined;
@@ -119,26 +132,26 @@ export function authRoutes({cfg, repo, oidc, provider, services}: Deps): Router 
             if (stored !== undefined) {
                 const check = await tokenOwnedBy(stored, user);
                 if (check.ok) {
-                    res.redirect(302, await provider.completeAuthorization(pending, user.id));
+                    res.redirect(302, consentUrl(session));
                     return;
                 }
                 console.warn(`[auth] stored API token for user ${user.id} no longer valid: ${check.reason}`);
             }
-            res.redirect(302, `/auth/enrol?p=${encodeURIComponent(pending.id)}&reason=invalid`);
+            res.redirect(302, enrolUrl(session, "invalid"));
             return;
         }
-        res.redirect(302, `/auth/enrol?p=${encodeURIComponent(pending.id)}`);
+        res.redirect(302, enrolUrl(session));
     });
 
     // First-time (or replacement) API-token enrolment.
     r.get("/auth/enrol", async (req, res) => {
         const q = req.query as Record<string, string | undefined>;
-        const pending = q.p ? await repo.getPending(q.p) : undefined;
-        if (!pending || pending.action === "forget" || !pending.userId) {
+        const ctx = await signedIn(q.p);
+        if (!ctx) {
             res.status(400).type("html").send(errorPage("This page has expired.", EXPIRED_HINT));
             return;
         }
-        const user = await repo.getUser(pending.userId);
+        const {pending, user} = ctx;
         render(res, pending, user, {
             notice: q.reason === "invalid" ? "The API token you saved earlier no longer works (revoked or expired). Please paste a new one." : undefined,
         });
@@ -146,12 +159,12 @@ export function authRoutes({cfg, repo, oidc, provider, services}: Deps): Router 
 
     r.post("/auth/enrol", async (req, res) => {
         const body = (req.body ?? {}) as Record<string, string | undefined>;
-        const pending = body.p ? await repo.getPending(body.p) : undefined;
-        const user = pending?.userId ? await repo.getUser(pending.userId) : undefined;
-        if (!pending || pending.action === "forget" || !user) {
+        const ctx = await signedIn(body.p);
+        if (!ctx) {
             res.status(400).type("html").send(errorPage("This page has expired.", EXPIRED_HINT));
             return;
         }
+        const {pending, user} = ctx;
         const token = (body.token ?? "").trim();
         if (!token) {
             render(res, pending, user, {error: "Please paste a token."});
@@ -179,6 +192,53 @@ export function authRoutes({cfg, repo, oidc, provider, services}: Deps): Router 
 
         await repo.putUser({...user, apiTokenEnc: encrypt(token, cfg.encryptionKey), enrolledAt: Date.now()});
         console.info(`[auth] user ${user.id} enrolled an API token`);
+        res.redirect(302, consentUrl(pending));
+    });
+
+    // Consent: the signed-in, enrolled user approves (or not) the client that asked for access,
+    // shown by name and redirect URI. Anyone can register a client, and the Infomaniak login
+    // only ever asks about the bridge's own app, so this page is the one place a user can tell
+    // their own claude.ai from a client someone else registered (MCP spec: proxies with one
+    // fixed upstream client id must obtain consent for each dynamically registered client).
+    r.get("/auth/consent", async (req, res) => {
+        const q = req.query as Record<string, string | undefined>;
+        const ctx = await signedIn(q.p);
+        if (!ctx) {
+            res.status(400).type("html").send(errorPage("This page has expired.", EXPIRED_HINT));
+            return;
+        }
+        const {pending, user} = ctx;
+        if (!user.apiTokenEnc) {
+            res.redirect(302, enrolUrl(pending));
+            return;
+        }
+        const client = await repo.getClient(pending.clientId);
+        if (!client) {
+            res.status(400).type("html").send(errorPage("The client's registration has expired.", EXPIRED_HINT));
+            return;
+        }
+        res.type("html").send(consentPage({pendingId: pending.id, email: user.email, clientName: client.client_name ?? client.client_id, redirectUri: pending.redirectUri, services}));
+    });
+
+    r.post("/auth/consent", async (req, res) => {
+        const body = (req.body ?? {}) as Record<string, string | undefined>;
+        const ctx = await signedIn(body.p);
+        if (!ctx) {
+            res.status(400).type("html").send(errorPage("This page has expired.", EXPIRED_HINT));
+            return;
+        }
+        const {pending, user} = ctx;
+        if (!user.apiTokenEnc) {
+            res.redirect(302, enrolUrl(pending));
+            return;
+        }
+        if (body.decision !== "allow") {
+            await repo.delPending(pending.id);
+            console.info(`[auth] user ${user.id} denied client ${pending.clientId}`);
+            res.redirect(302, errorRedirect(pending, "access_denied", "The user denied the request"));
+            return;
+        }
+        console.info(`[auth] user ${user.id} allowed client ${pending.clientId}`);
         res.redirect(302, await provider.completeAuthorization(pending, user.id));
     });
 
