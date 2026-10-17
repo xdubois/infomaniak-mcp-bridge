@@ -72,8 +72,9 @@ v0.1.0 released: repo public, CI publishes `ghcr.io/xdubois/infomaniak-mcp-bridg
 bump `version` in package.json, tag `vX.Y.Z`, push the tag; CI builds and pushes the image,
 then create the GitHub release from the tag. Decided (2026-09-28): keep child processes, ~20
 users; in-process/worker variants were measured and rejected as not worth the internals
-dependency. Known upstream nits: `mcp-server-contact` and `-kchat` still pin SDK 1.12 (npm
-audit flags its HTTP transport; they only ever run stdio here).
+dependency. Known upstream nits: `mcp-server-contact` and `-kchat` still pin SDK 1.12,
+`-kdrive` SDK 1.29 (npm audit flags SDK <=1.30.1, mostly HTTP transport/OAuth client
+advisories; they only ever run stdio here).
 
 Pre-release review (2026-09-30): added the per-client consent page and callback re-keying
 (before, an enrolled user following a crafted `/authorize` link, or an Infomaniak login link
