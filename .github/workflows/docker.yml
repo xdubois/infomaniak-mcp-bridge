@@ -67,4 +67,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # A cache write the runner token may not make ("failed to reserve cache") must not
+          # fail an image that already built.
+          cache-to: type=gha,mode=max,ignore-error=true
