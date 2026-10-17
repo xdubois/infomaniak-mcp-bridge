@@ -83,7 +83,7 @@ cp .env.example .env    # fill the OAuth app and the encryption key
 npm install && npm run dev
 ```
 
-**Docker.** Image `ghcr.io/xdubois/infomaniak-mcp-bridge` (`0.1.0` / `0.1` / `latest` on
+**Docker.** Image `ghcr.io/xdubois/infomaniak-mcp-bridge` (`0.1.1` / `0.1` / `latest` on
 release tags, `main` and `sha-<commit>` for every commit), built by GitHub Actions on Node 24, non-root, fine with
 a read-only root filesystem. `docker compose up -d --build` runs it on `127.0.0.1:3000`; with
 plain `docker run`, add `--init` so the child processes are reaped.

@@ -65,9 +65,9 @@ CLIENT_ID=… ./scripts/scope-probe.sh ; python3 scripts/oauth-probe.py   # the 
   unnecessary: MCP clients register their callback with the bridge via DCR, Infomaniak only
   ever sees the bridge's own). A public deployment needs `<PUBLIC_URL>/auth/infomaniak/callback`.
 
-## Status (2026-09-30)
+## Status (2026-10-17)
 
-v0.1.0 released: repo public, CI publishes `ghcr.io/xdubois/infomaniak-mcp-bridge` (`0.1.0`,
+v0.1.1 released (dependency/security bump; v0.1.0 first public release): repo public, CI publishes `ghcr.io/xdubois/infomaniak-mcp-bridge` (`0.1.1`,
 `0.1`, `latest`, `main`, `sha-*`), a private instance runs on Kubernetes with Redis. Releases:
 bump `version` in package.json, tag `vX.Y.Z`, push the tag; CI builds and pushes the image,
 then create the GitHub release from the tag. Decided (2026-09-28): keep child processes, ~20
